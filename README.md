@@ -13,7 +13,8 @@
   - **Clean Latest Commit (HEAD) Only**: Instantly scrub the message of your most recent commit.
 - ⚡ **Safe & Automated**: Automates `git rebase` and `git commit --amend` safely with automatic rollback if a rebase encounters an unexpected error.
 - 📊 **Real-time Progress & Indicators**: Live loading animation, progress bar, task counter (`Task X of Y`), and percentage indicators during execution.
-- 🎨 **Modern GUI**: Built with [Flet](https://flet.dev/) providing a clean dark-themed user interface.
+- 🎨 **Modern Design UI**: Minimalist aesthetic with Montserrat typography, category-style scope cards, and soft lavender accents.
+- 🌓 **Theme Toggle**: Default light mode with seamless one-click Dark Mode toggle.
 
 ---
 
