@@ -6,6 +6,7 @@ from git_cleaner import (
     get_unpushed_commits,
     run_cmd
 )
+import profile_manager as pm
 
 # Design palette inspired by design/8727651.jpg
 THEMES = {
@@ -68,8 +69,8 @@ def main(page: ft.Page):
     page.dark_theme = ft.Theme(font_family="Montserrat")
     page.theme_mode = ft.ThemeMode.LIGHT
     page.padding = 24
-    page.window.width = 860
-    page.window.height = 880
+    page.window.width = 880
+    page.window.height = 920
     page.scroll = ft.ScrollMode.AUTO
 
     # Current state
@@ -121,6 +122,8 @@ def main(page: ft.Page):
     def create_section_title(text):
         return ft.Text(text, size=13, weight=ft.FontWeight.BOLD, color=t["text_primary"])
 
+    lbl_profile = create_section_title("Configuration Profile")
+    lbl_profile_sub = ft.Text("Save and switch presets for repository paths & target messages", size=11, color=t["text_muted"])
     lbl_repo = create_section_title("Repository Path")
     lbl_target = create_section_title("Target Line to Remove")
     lbl_scope = create_section_title("Target Scope")
@@ -178,7 +181,7 @@ def main(page: ft.Page):
         height=52
     )
 
-    # ------------------ Scope Category Cards (Mockup Style) ------------------
+    # ------------------ Scope Category Cards ------------------
     scope_cards_data = [
         {
             "id": "unpushed",
@@ -250,11 +253,9 @@ def main(page: ft.Page):
             card.border = ft.Border.all(2 if is_selected else 1, cur_t["border_selected"] if is_selected else cur_t["border"])
 
             col = card.content
-            # icon row
             col.controls[0].controls[0].color = cur_t["primary"] if is_selected else cur_t["text_muted"]
             col.controls[0].controls[1].name = ft.Icons.CHECK_CIRCLE_ROUNDED if is_selected else ft.Icons.RADIO_BUTTON_UNCHECKED_ROUNDED
             col.controls[0].controls[1].color = cur_t["primary"] if is_selected else cur_t["border"]
-            # title & subtitle
             col.controls[2].color = cur_t["text_primary"]
             col.controls[3].color = cur_t["text_muted"]
 
@@ -272,6 +273,52 @@ def main(page: ft.Page):
         scope_card_widgets["specific"],
         scope_card_widgets["head"],
     ], spacing=12)
+
+    # ------------------ Profile Management Controls ------------------
+    profile_dropdown = ft.Dropdown(
+        hint_text="Select or create a configuration profile...",
+        expand=True,
+        border_radius=12,
+        border_color=t["border"],
+        focused_border_color=t["primary"],
+        bgcolor=t["surface"],
+        color=t["text_primary"],
+        leading_icon=ft.Icons.BOOKMARK_ROUNDED,
+        height=48,
+        options=[ft.dropdown.Option(key=name, text=name) for name in pm.list_profiles()],
+    )
+
+    save_profile_btn = ft.ElevatedButton(
+        "Save",
+        icon=ft.Icons.SAVE_ROUNDED,
+        height=48,
+        tooltip="Save current inputs to active profile",
+        style=ft.ButtonStyle(
+            bgcolor=t["dark_button"],
+            color=t["dark_button_text"],
+            shape=ft.RoundedRectangleBorder(radius=12),
+        )
+    )
+
+    new_profile_btn = ft.ElevatedButton(
+        "New",
+        icon=ft.Icons.ADD_ROUNDED,
+        height=48,
+        tooltip="Create a new profile with current inputs",
+        style=ft.ButtonStyle(
+            bgcolor=t["surface_tint"],
+            color=t["primary"],
+            shape=ft.RoundedRectangleBorder(radius=12),
+        )
+    )
+
+    delete_profile_btn = ft.IconButton(
+        icon=ft.Icons.DELETE_OUTLINE_ROUNDED,
+        icon_color=ft.Colors.RED_400,
+        tooltip="Delete selected profile",
+        height=48,
+        width=48,
+    )
 
     # ------------------ Action Button ------------------
     run_button = ft.ElevatedButton(
@@ -359,9 +406,221 @@ def main(page: ft.Page):
         padding=16,
         border_radius=14,
         border=ft.Border.all(1, t["border"]),
-        height=220,
+        height=200,
         expand=True
     )
+
+    # ------------------ Profile Helper Functions ------------------
+    def refresh_profile_dropdown(selected_name=None):
+        profiles = pm.list_profiles()
+        profile_dropdown.options = [ft.dropdown.Option(key=name, text=name) for name in profiles]
+        if selected_name and selected_name in profiles:
+            profile_dropdown.value = selected_name
+        elif profiles:
+            profile_dropdown.value = profiles[0]
+        else:
+            profile_dropdown.value = None
+
+    def load_profile_data(p_name):
+        p = pm.get_profile(p_name)
+        if not p:
+            return
+        path_input.value = p.get("repo_path", "")
+        target_line_input.value = p.get("target_line", "")
+        p_mode = p.get("mode", "unpushed")
+        hashes_input.value = p.get("hashes", "")
+        on_select_scope(p_mode)
+        pm.set_last_selected(p_name)
+
+    def on_profile_selected(e):
+        sel_name = profile_dropdown.value
+        if not sel_name:
+            return
+        load_profile_data(sel_name)
+        cur_t = THEMES[state["theme"]]
+        log_output.value = (
+            f"[PROFILE LOADED] Switched to profile '{sel_name}'.\n"
+            f"Repository: {path_input.value or '(Not set)'}\n"
+            f"Target Line: {target_line_input.value or '(Not set)'}\n"
+            f"Mode: {state['mode']}\n"
+            f"Ready to process commits."
+        )
+        log_output.color = cur_t["primary"]
+        page.update()
+
+    profile_dropdown.on_select = on_profile_selected
+
+    def on_save_profile_clicked(e):
+        cur_t = THEMES[state["theme"]]
+        active_name = profile_dropdown.value
+        if not active_name:
+            open_new_profile_dialog(e)
+            return
+
+        ok, msg = pm.save_profile(
+            name=active_name,
+            repo_path=path_input.value,
+            target_line=target_line_input.value,
+            mode=state["mode"],
+            hashes=hashes_input.value
+        )
+        if ok:
+            log_output.value = f"[PROFILE SAVED] Updated profile '{active_name}' with current settings."
+            log_output.color = ft.Colors.GREEN_600 if state["theme"] == "light" else ft.Colors.GREEN_400
+        else:
+            log_output.value = f"[PROFILE ERROR] {msg}"
+            log_output.color = ft.Colors.RED_500
+        page.update()
+
+    save_profile_btn.on_click = on_save_profile_clicked
+
+    def open_new_profile_dialog(e):
+        cur_t = THEMES[state["theme"]]
+        default_name = ""
+        if path_input.value:
+            default_name = os.path.basename(path_input.value.strip().rstrip("\\/"))
+        if not default_name:
+            default_name = f"Profile {len(pm.list_profiles()) + 1}"
+
+        name_input = ft.TextField(
+            label="Profile Name",
+            value=default_name,
+            autofocus=True,
+            border_radius=10,
+            border_color=cur_t["border"],
+            focused_border_color=cur_t["primary"],
+            bgcolor=cur_t["surface"],
+            color=cur_t["text_primary"],
+            prefix_icon=ft.Icons.BOOKMARK_OUTLINED
+        )
+
+        def close_dialog(ev):
+            page.pop_dialog()
+
+        def save_dialog(ev):
+            chosen_name = name_input.value.strip()
+            if not chosen_name:
+                name_input.error_text = "Please enter a profile name"
+                page.update()
+                return
+
+            ok, msg = pm.save_profile(
+                name=chosen_name,
+                repo_path=path_input.value,
+                target_line=target_line_input.value,
+                mode=state["mode"],
+                hashes=hashes_input.value
+            )
+            if ok:
+                refresh_profile_dropdown(chosen_name)
+                page.pop_dialog()
+                log_output.value = f"[PROFILE CREATED] Profile '{chosen_name}' created and set as active."
+                log_output.color = ft.Colors.GREEN_600 if state["theme"] == "light" else ft.Colors.GREEN_400
+                page.update()
+            else:
+                name_input.error_text = msg
+                page.update()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Save Configuration Profile", size=16, weight=ft.FontWeight.BOLD, color=cur_t["text_primary"]),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text("Store repository path, target scrub line, and target scope for instant loading.", size=12, color=cur_t["text_muted"]),
+                    ft.Container(height=4),
+                    name_input
+                ], tight=True, spacing=6),
+                width=420,
+                padding=10
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dialog),
+                ft.ElevatedButton(
+                    "Save Profile",
+                    style=ft.ButtonStyle(
+                        bgcolor=cur_t["primary"],
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=10)
+                    ),
+                    on_click=save_dialog
+                )
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=cur_t["surface"],
+            shape=ft.RoundedRectangleBorder(radius=14)
+        )
+        page.show_dialog(dlg)
+
+    new_profile_btn.on_click = open_new_profile_dialog
+
+    def open_delete_profile_dialog(e):
+        cur_t = THEMES[state["theme"]]
+        active_name = profile_dropdown.value
+        if not active_name:
+            log_output.value = "[NOTICE] No profile selected to delete."
+            log_output.color = ft.Colors.ORANGE_500
+            page.update()
+            return
+
+        def close_dialog(ev):
+            page.pop_dialog()
+
+        def confirm_delete(ev):
+            del_target = active_name
+            pm.delete_profile(del_target)
+            page.pop_dialog()
+
+            last_name, last_p = pm.get_last_selected_profile()
+            if last_p:
+                refresh_profile_dropdown(last_name)
+                load_profile_data(last_name)
+                log_output.value = f"[PROFILE DELETED] Deleted '{del_target}'. Active profile is now '{last_name}'."
+            else:
+                refresh_profile_dropdown(None)
+                log_output.value = f"[PROFILE DELETED] Deleted '{del_target}'. No profiles remaining."
+            log_output.color = cur_t["primary"]
+            page.update()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Delete Profile", size=16, weight=ft.FontWeight.BOLD, color=cur_t["text_primary"]),
+            content=ft.Text(f"Are you sure you want to delete profile '{active_name}'?", size=13, color=cur_t["text_muted"]),
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dialog),
+                ft.ElevatedButton(
+                    "Delete",
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.RED_500,
+                        color=ft.Colors.WHITE,
+                        shape=ft.RoundedRectangleBorder(radius=10)
+                    ),
+                    on_click=confirm_delete
+                )
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=cur_t["surface"],
+            shape=ft.RoundedRectangleBorder(radius=14)
+        )
+        page.show_dialog(dlg)
+
+    delete_profile_btn.on_click = open_delete_profile_dialog
+
+    # ------------------ Auto-Load Profile on Launch ------------------
+    last_name, last_profile = pm.get_last_selected_profile()
+    if last_profile:
+        profile_dropdown.value = last_name
+        path_input.value = last_profile.get("repo_path", "")
+        target_line_input.value = last_profile.get("target_line", "")
+        init_mode = last_profile.get("mode", "unpushed")
+        state["mode"] = init_mode
+        hashes_input.value = last_profile.get("hashes", "")
+        hashes_input.visible = (init_mode == "specific")
+        log_output.value = (
+            f"[AUTO-LOADED PROFILE] '{last_name}'\n"
+            f"Repository: {last_profile.get('repo_path') or '(No path set)'}\n"
+            f"Target Line: {last_profile.get('target_line') or '(No line set)'}\n"
+            f"Scope Mode: {init_mode}\n"
+            f"Ready to process commits."
+        )
+        log_output.color = t["primary"]
 
     # ------------------ Theme Management ------------------
     def apply_theme():
@@ -383,10 +642,22 @@ def main(page: ft.Page):
         theme_toggle_btn.border = ft.Border.all(1, cur_t["border"])
 
         # Section Labels
+        lbl_profile.color = cur_t["text_primary"]
+        lbl_profile_sub.color = cur_t["text_muted"]
         lbl_repo.color = cur_t["text_primary"]
         lbl_target.color = cur_t["text_primary"]
         lbl_scope.color = cur_t["text_primary"]
         lbl_logs.color = cur_t["text_primary"]
+
+        # Profile Controls
+        profile_dropdown.bgcolor = cur_t["surface"]
+        profile_dropdown.border_color = cur_t["border"]
+        profile_dropdown.focused_border_color = cur_t["primary"]
+        profile_dropdown.color = cur_t["text_primary"]
+        save_profile_btn.style.bgcolor = cur_t["dark_button"]
+        save_profile_btn.style.color = cur_t["dark_button_text"]
+        new_profile_btn.style.bgcolor = cur_t["surface_tint"]
+        new_profile_btn.style.color = cur_t["primary"]
 
         # Inputs
         path_input.bgcolor = cur_t["surface"]
@@ -464,6 +735,16 @@ def main(page: ft.Page):
             log_output.color = ft.Colors.RED_500
             page.update()
             return
+
+        # Auto-sync active profile if one is selected
+        if profile_dropdown.value:
+            pm.save_profile(
+                name=profile_dropdown.value,
+                repo_path=repo_path,
+                target_line=target_line,
+                mode=mode,
+                hashes=hashes_input.value
+            )
 
         targets = []
         if mode == "unpushed":
@@ -566,6 +847,16 @@ def main(page: ft.Page):
     page.add(
         header_row,
         ft.Divider(color=t["border"], height=20),
+        lbl_profile,
+        lbl_profile_sub,
+        ft.Container(height=2),
+        ft.Row([
+            profile_dropdown,
+            save_profile_btn,
+            new_profile_btn,
+            delete_profile_btn
+        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ft.Container(height=8),
         lbl_repo,
         ft.Row([
             path_input,

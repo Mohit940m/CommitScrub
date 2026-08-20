@@ -4,3 +4,6 @@ design/
 .git_clean_msg_tmp.txt
 .git_seq_editor.py
 .git_msg_editor.py
+profiles.json
+profile.json
+

@@ -6,6 +6,10 @@
 
 ## 🚀 Features
 
+- 📁 **External JSON Profiles & Auto-Loading**:
+  - Save project paths, target scrub lines, and scope preferences into named profiles.
+  - Automatically remembers and reloads the last selected profile on app launch—no need to re-enter configurations!
+  - Profiles are saved in an external `profiles.json` file for easy backup and editing.
 - 🎯 **Targeted Line Removal**: Remove any specific line or text pattern from commit messages.
 - 🔍 **Flexible Target Scopes**:
   - **Clean ALL Unpushed Local Commits**: Automatically detects and scrubs all local commits that haven't been pushed to the remote tracking branch.
@@ -50,19 +54,25 @@ Run the main script using Python:
 python app.py
 ```
 
-### 2. Select Repository
+### 2. Manage Configuration Profiles (Productivity Booster)
+- **Select / Switch Profile**: Pick an existing profile from the dropdown; your repository path, target scrub line, and target scope will load instantly.
+- **Save Profile**: Click **Save** to update the active profile with your current inputs.
+- **Create New Profile**: Click **New** to name and save your current configuration as a new profile.
+- **Auto-Loading**: The app marks your active profile in `profiles.json` and will automatically load it the next time you start CommitScrub!
+
+### 3. Select Repository
 Click **Browse Path** to select the local directory of the Git repository you want to clean.
 
-### 3. Enter Target Line to Remove
+### 4. Enter Target Line to Remove
 Paste the exact line you wish to scrub from commit messages into the **Target Line to Remove** text box.
 
-### 4. Choose Target Scope
+### 5. Choose Target Scope
 Select one of the three available scope options:
 - **Clean ALL Unpushed Local Commits**: Scrubs all commits between `@{u}` (upstream) and `HEAD`.
 - **Clean Specific Commit Hashes**: Enter commit hashes (e.g. `7afc84a e2fa9ce`) into the text field.
 - **Clean Latest Commit (HEAD) Only**: Scrubs only the latest commit.
 
-### 5. Run Cleaner
+### 6. Run Cleaner
 Click **Run Cleaner**. Real-time progress and summary execution logs will display in the **Execution Logs** panel.
 
 ---
