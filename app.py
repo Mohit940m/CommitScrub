@@ -147,7 +147,10 @@ def main(page: ft.Page):
             "Run Cleaner", 
             icon=ft.Icons.CLEANING_SERVICES, 
             on_click=process_cleaning,
-            style=ft.ButtonStyle(bgcolor=ft.Colors.PRIMARY)
+            style=ft.ButtonStyle(
+                bgcolor=ft.Colors.PRIMARY,
+                color=ft.Colors.ON_PRIMARY,
+            )
         ),
         ft.Divider(),
         ft.Text("Execution Logs:", weight=ft.FontWeight.W_600),
