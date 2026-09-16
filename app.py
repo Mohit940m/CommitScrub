@@ -4,7 +4,8 @@ import flet as ft
 from git_cleaner import (
     remove_coauthor_from_commit,
     get_unpushed_commits,
-    run_cmd
+    run_cmd,
+    check_repo_status
 )
 import profile_manager as pm
 
@@ -73,10 +74,13 @@ def main(page: ft.Page):
     page.window.height = 920
     page.scroll = ft.ScrollMode.AUTO
 
+    last_name, last_profile = pm.get_last_selected_profile()
+    initial_mode = last_profile.get("mode", "unpushed") if last_profile else "unpushed"
+
     # Current state
     state = {
         "theme": "light",
-        "mode": "unpushed"
+        "mode": initial_mode
     }
 
     t = THEMES[state["theme"]]
@@ -238,7 +242,7 @@ def main(page: ft.Page):
             padding=14,
             expand=True,
             ink=True,
-            on_click=lambda e, m=item["id"]: on_select_scope(m)
+            on_click=lambda e, m=item["id"]: on_select_scope(m, auto_save=True)
         )
         return container
 
@@ -259,10 +263,18 @@ def main(page: ft.Page):
             col.controls[2].color = cur_t["text_primary"]
             col.controls[3].color = cur_t["text_muted"]
 
-    def on_select_scope(m_id):
+    def on_select_scope(m_id, auto_save=True):
         state["mode"] = m_id
         hashes_input.visible = (m_id == "specific")
         update_scope_cards()
+        if auto_save and profile_dropdown.value:
+            pm.save_profile(
+                name=profile_dropdown.value,
+                repo_path=path_input.value,
+                target_line=target_line_input.value,
+                mode=m_id,
+                hashes=hashes_input.value
+            )
         page.update()
 
     for item in scope_cards_data:
@@ -277,6 +289,7 @@ def main(page: ft.Page):
     # ------------------ Profile Management Controls ------------------
     profile_dropdown = ft.Dropdown(
         hint_text="Select or create a configuration profile...",
+        value=last_name,
         expand=True,
         border_radius=12,
         border_color=t["border"],
@@ -284,7 +297,8 @@ def main(page: ft.Page):
         bgcolor=t["surface"],
         color=t["text_primary"],
         leading_icon=ft.Icons.BOOKMARK_ROUNDED,
-        height=48,
+        content_padding=ft.Padding(10, 4, 10, 4),
+        dense=True,
         options=[ft.dropdown.Option(key=name, text=name) for name in pm.list_profiles()],
     )
 
@@ -425,15 +439,18 @@ def main(page: ft.Page):
         p = pm.get_profile(p_name)
         if not p:
             return
+        profile_dropdown.value = p_name
         path_input.value = p.get("repo_path", "")
         target_line_input.value = p.get("target_line", "")
         p_mode = p.get("mode", "unpushed")
         hashes_input.value = p.get("hashes", "")
-        on_select_scope(p_mode)
+        on_select_scope(p_mode, auto_save=False)
         pm.set_last_selected(p_name)
 
     def on_profile_selected(e):
         sel_name = profile_dropdown.value
+        if not sel_name and hasattr(e, "data"):
+            sel_name = e.data
         if not sel_name:
             return
         load_profile_data(sel_name)
@@ -442,7 +459,7 @@ def main(page: ft.Page):
             f"[PROFILE LOADED] Switched to profile '{sel_name}'.\n"
             f"Repository: {path_input.value or '(Not set)'}\n"
             f"Target Line: {target_line_input.value or '(Not set)'}\n"
-            f"Mode: {state['mode']}\n"
+            f"Scope Mode: {state['mode']}\n"
             f"Ready to process commits."
         )
         log_output.color = cur_t["primary"]
@@ -604,23 +621,18 @@ def main(page: ft.Page):
     delete_profile_btn.on_click = open_delete_profile_dialog
 
     # ------------------ Auto-Load Profile on Launch ------------------
-    last_name, last_profile = pm.get_last_selected_profile()
-    if last_profile:
-        profile_dropdown.value = last_name
-        path_input.value = last_profile.get("repo_path", "")
-        target_line_input.value = last_profile.get("target_line", "")
-        init_mode = last_profile.get("mode", "unpushed")
-        state["mode"] = init_mode
-        hashes_input.value = last_profile.get("hashes", "")
-        hashes_input.visible = (init_mode == "specific")
+    if last_name and last_profile:
+        load_profile_data(last_name)
         log_output.value = (
             f"[AUTO-LOADED PROFILE] '{last_name}'\n"
             f"Repository: {last_profile.get('repo_path') or '(No path set)'}\n"
             f"Target Line: {last_profile.get('target_line') or '(No line set)'}\n"
-            f"Scope Mode: {init_mode}\n"
+            f"Scope Mode: {state['mode']}\n"
             f"Ready to process commits."
         )
         log_output.color = t["primary"]
+    else:
+        on_select_scope("unpushed", auto_save=False)
 
     # ------------------ Theme Management ------------------
     def apply_theme():
@@ -724,8 +736,9 @@ def main(page: ft.Page):
         target_line = target_line_input.value.strip()
         mode = state["mode"]
 
-        if not repo_path or not os.path.exists(repo_path):
-            log_output.value = "[ERROR] Please select a valid Git repository directory."
+        is_ready, err_msg = await asyncio.to_thread(check_repo_status, repo_path)
+        if not is_ready:
+            log_output.value = f"[ERROR] {err_msg}"
             log_output.color = ft.Colors.RED_500
             page.update()
             return
