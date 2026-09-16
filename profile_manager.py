@@ -25,6 +25,7 @@ def load_profiles_data():
     """
     Loads profiles from profiles.json safely.
     Ensures file is created on disk if it does not exist.
+    If corrupted or invalid, creates a backup and resets to DEFAULT_DATA.
     Returns a dictionary with 'last_selected' and 'profiles'.
     """
     if not os.path.exists(PROFILES_FILE):
@@ -32,18 +33,40 @@ def load_profiles_data():
         return DEFAULT_DATA.copy()
     try:
         with open(PROFILES_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if not isinstance(data, dict):
-                ensure_profiles_file()
+            content = f.read().strip()
+            if not content:
+                # Empty file
+                save_profiles_data(DEFAULT_DATA.copy())
                 return DEFAULT_DATA.copy()
+            data = json.loads(content)
+
+            if not isinstance(data, dict):
+                save_profiles_data(DEFAULT_DATA.copy())
+                return DEFAULT_DATA.copy()
+
             if "profiles" not in data or not isinstance(data["profiles"], dict):
                 data["profiles"] = {}
-            if "last_selected" not in data:
+            else:
+                # Ensure each profile entry is a valid dict
+                data["profiles"] = {
+                    k: v for k, v in data["profiles"].items() if isinstance(v, dict)
+                }
+
+            if "last_selected" not in data or not isinstance(data["last_selected"], (str, type(None))):
                 data["last_selected"] = None
+
             return data
     except Exception as e:
         logging.error(f"Error loading profiles.json: {e}")
-        ensure_profiles_file()
+        try:
+            bak_path = PROFILES_FILE + ".bak"
+            if os.path.exists(PROFILES_FILE):
+                if os.path.exists(bak_path):
+                    os.remove(bak_path)
+                os.rename(PROFILES_FILE, bak_path)
+        except Exception as bak_err:
+            logging.error(f"Failed to backup corrupted profiles.json: {bak_err}")
+        save_profiles_data(DEFAULT_DATA.copy())
         return DEFAULT_DATA.copy()
 
 def save_profiles_data(data):
@@ -65,7 +88,8 @@ def get_profile(name):
     if not name:
         return None
     data = load_profiles_data()
-    return data.get("profiles", {}).get(name)
+    prof = data.get("profiles", {}).get(name)
+    return prof if isinstance(prof, dict) else None
 
 def get_last_selected_profile():
     """
@@ -73,13 +97,13 @@ def get_last_selected_profile():
     """
     data = load_profiles_data()
     last = data.get("last_selected")
-    if last and last in data.get("profiles", {}):
-        return last, data["profiles"][last]
-    # Fallback to the first profile if available
     profiles = data.get("profiles", {})
-    if profiles:
-        first_name = next(iter(profiles))
-        return first_name, profiles[first_name]
+    if last and last in profiles and isinstance(profiles[last], dict):
+        return last, profiles[last]
+    # Fallback to the first valid profile if available
+    for first_name, first_prof in profiles.items():
+        if isinstance(first_prof, dict):
+            return first_name, first_prof
     return None, None
 
 def save_profile(name, repo_path, target_line, mode="unpushed", hashes=""):
@@ -90,11 +114,14 @@ def save_profile(name, repo_path, target_line, mode="unpushed", hashes=""):
     if not name:
         return False, "Profile name cannot be empty."
 
+    if mode not in ("unpushed", "specific", "head"):
+        mode = "unpushed"
+
     data = load_profiles_data()
     data["profiles"][name] = {
         "repo_path": repo_path or "",
         "target_line": target_line or "",
-        "mode": mode or "unpushed",
+        "mode": mode,
         "hashes": hashes or ""
     }
     data["last_selected"] = name
