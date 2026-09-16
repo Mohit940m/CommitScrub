@@ -95,7 +95,7 @@ def remove_coauthor_from_commit(repo_path, commit_hash, target_line):
             return "DONE", f"Successfully cleaned HEAD commit ({commit_hash[:7]})"
         else:
             # Check if commit has a parent or is root commit
-            parent_hash, _ = run_cmd(f"git rev-parse --verify {full_hash}^", repo_path)
+            parent_hash, _ = run_cmd(f"git rev-parse --verify {full_hash}~1", repo_path)
             is_root = (parent_hash is None)
             rebase_target = "--root" if is_root else f"{full_hash}~1"
 

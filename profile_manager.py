@@ -4,10 +4,12 @@ import logging
 
 PROFILES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles.json")
 
-DEFAULT_DATA = {
-    "last_selected": None,
-    "profiles": {}
-}
+def get_default_data():
+    """Returns a fresh copy of the default profile data structure."""
+    return {
+        "last_selected": None,
+        "profiles": {}
+    }
 
 def get_profiles_path():
     """Returns the absolute path to profiles.json."""
@@ -16,33 +18,33 @@ def get_profiles_path():
 def ensure_profiles_file():
     """
     Ensures that profiles.json exists on disk.
-    If not, creates it with DEFAULT_DATA.
+    If not, creates it with get_default_data().
     """
     if not os.path.exists(PROFILES_FILE):
-        save_profiles_data(DEFAULT_DATA.copy())
+        save_profiles_data(get_default_data())
 
 def load_profiles_data():
     """
     Loads profiles from profiles.json safely.
     Ensures file is created on disk if it does not exist.
-    If corrupted or invalid, creates a backup and resets to DEFAULT_DATA.
+    If corrupted or invalid, creates a backup and resets to default data.
     Returns a dictionary with 'last_selected' and 'profiles'.
     """
     if not os.path.exists(PROFILES_FILE):
         ensure_profiles_file()
-        return DEFAULT_DATA.copy()
+        return get_default_data()
     try:
         with open(PROFILES_FILE, "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
                 # Empty file
-                save_profiles_data(DEFAULT_DATA.copy())
-                return DEFAULT_DATA.copy()
+                save_profiles_data(get_default_data())
+                return get_default_data()
             data = json.loads(content)
 
             if not isinstance(data, dict):
-                save_profiles_data(DEFAULT_DATA.copy())
-                return DEFAULT_DATA.copy()
+                save_profiles_data(get_default_data())
+                return get_default_data()
 
             if "profiles" not in data or not isinstance(data["profiles"], dict):
                 data["profiles"] = {}
@@ -66,8 +68,8 @@ def load_profiles_data():
                 os.rename(PROFILES_FILE, bak_path)
         except Exception as bak_err:
             logging.error(f"Failed to backup corrupted profiles.json: {bak_err}")
-        save_profiles_data(DEFAULT_DATA.copy())
-        return DEFAULT_DATA.copy()
+        save_profiles_data(get_default_data())
+        return get_default_data()
 
 def save_profiles_data(data):
     """
